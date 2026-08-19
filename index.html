@@ -435,6 +435,60 @@
     submitBtn.disabled = false;
   });
 
+  function submitPayload(payload, batch, info, nameVal, attemptsLeft) {
+    fetch(WEB_APP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res.success) {
+          loadingText.classList.remove('show');
+          if (nameVal === '__CANT_FIND__') {
+            modalTitle.textContent = 'Response recorded';
+            modalSub.textContent = "We've noted you couldn't find your name. Please report at the venue.";
+          } else {
+            modalTitle.textContent = "You're confirmed";
+            modalSub.textContent = 'See you at LMTC';
+          }
+          modalBatch.textContent = batch;
+          modalSlot.textContent = info.slot;
+          modalTime.textContent = info.time;
+          modalReporting.textContent = info.reporting;
+          overlay.classList.add('show');
+
+          batchSelect.disabled = true;
+          nameSelect.disabled = true;
+          submitBtn.style.display = 'none';
+        } else if (res.message === 'already_registered') {
+          loadingText.classList.remove('show');
+          showMsg('This IMS Pin has already registered.', 'error');
+          submitBtn.disabled = false;
+        } else if (res.message === 'busy' && attemptsLeft > 0) {
+          // Transient server-side hiccup (e.g. lock contention under load) — retry silently
+          setTimeout(function () {
+            submitPayload(payload, batch, info, nameVal, attemptsLeft - 1);
+          }, 1500);
+        } else {
+          loadingText.classList.remove('show');
+          showMsg('The server is busy right now. Please tap Confirm attendance again.', 'error');
+          submitBtn.disabled = false;
+        }
+      })
+      .catch(function () {
+        if (attemptsLeft > 0) {
+          setTimeout(function () {
+            submitPayload(payload, batch, info, nameVal, attemptsLeft - 1);
+          }, 1500);
+        } else {
+          loadingText.classList.remove('show');
+          showMsg('Network error. Please check your connection and try again.', 'error');
+          submitBtn.disabled = false;
+        }
+      });
+  }
+
   submitBtn.addEventListener('click', function () {
     hideMsg();
     var batch = batchSelect.value;
@@ -460,44 +514,7 @@
     submitBtn.disabled = true;
     loadingText.classList.add('show');
 
-    fetch(WEB_APP_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(payload)
-    })
-      .then(function (r) { return r.json(); })
-      .then(function (res) {
-        loadingText.classList.remove('show');
-        if (res.success) {
-          if (nameVal === '__CANT_FIND__') {
-            modalTitle.textContent = 'Response recorded';
-            modalSub.textContent = "We've noted you couldn't find your name. Please report at the venue.";
-          } else {
-            modalTitle.textContent = "You're confirmed";
-            modalSub.textContent = 'See you at LMTC';
-          }
-          modalBatch.textContent = batch;
-          modalSlot.textContent = info.slot;
-          modalTime.textContent = info.time;
-          modalReporting.textContent = info.reporting;
-          overlay.classList.add('show');
-
-          batchSelect.disabled = true;
-          nameSelect.disabled = true;
-          submitBtn.style.display = 'none';
-        } else if (res.message === 'already_registered') {
-          showMsg('This IMS Pin has already registered.', 'error');
-          submitBtn.disabled = false;
-        } else {
-          showMsg(res.message || 'Something went wrong. Please try again.', 'error');
-          submitBtn.disabled = false;
-        }
-      })
-      .catch(function () {
-        loadingText.classList.remove('show');
-        showMsg('Network error. Please check your connection and try again.', 'error');
-        submitBtn.disabled = false;
-      });
+    submitPayload(payload, batch, info, nameVal, 2);
   });
 
   // Load student data via JSONP (avoids CORS issues on GET)
